@@ -24,9 +24,13 @@ namespace StriveStick
         private static readonly Color _stickColor = new(255, 0, 0);
         private static readonly Color _boardBgColor = new(153, 153, 153);
         private static readonly Color _boardAccentColor = new(242, 242, 242);
-        private static readonly Color _lineGradientA = new(255, 0, 0);
-        private static readonly Color _lineGradientB = new(0, 0, 255);
-        private static readonly Color _lineGradientC = _lineGradientA;
+
+        private static readonly Color[] _historyLineGradient = new[]
+        {
+            new Color(255, 0, 0),
+            new Color(0, 0, 255),
+            new Color(255, 0, 0)
+        };
 
         private static readonly float _historyLineTime = 0.5f;
 
@@ -65,6 +69,7 @@ namespace StriveStick
         protected override void Draw(RenderContext context)
         {
             DrawInputDisplay(context, new(100, 100), new(100, 100));
+            TestGradient(context);
         }
 
         private void DrawInputDisplay(RenderContext context, Vector2 pos, Size size)
@@ -138,8 +143,7 @@ namespace StriveStick
                     small = true;
                 }
                 
-                var gradient = GetGradient(totalTime / _historyLineTime, _lineGradientA, _lineGradientB,
-                    _lineGradientC);
+                var gradient = GetGradient(totalTime / _historyLineTime, _historyLineGradient);
                 var realRadius = radius;
                 var isSmall = small;
                 context.Batch(r =>
@@ -161,14 +165,38 @@ namespace StriveStick
             context.DrawBatch(DrawOrder.FrontToBack);
         }
 
-        private Color GetGradient(float t, Color a, Color b, Color c)
+        private void TestGradient(RenderContext context)
         {
-            var interpColor = t < 0.5f ? a : c;
-            var red = b.R + t * (interpColor.R - b.R);
-            var green = b.G + t * (interpColor.G - b.G);
-            var blue = b.B + t * (interpColor.B - b.B);
-            var alpha = b.A + t * (interpColor.A - b.A);
+            var offset = new Vector2(100, 250);
+            var segmentSize = 20;
+            var segments = 30;
+            for (int i = 0; i < segments; i++)
+            {
+                context.Line(offset with { X = offset.X + (i * segmentSize) }, offset with { X = offset.X + ((i + 1) * segmentSize) }, GetGradient((float)i / segments, _historyLineGradient));
+            }
+        }
+
+        private Color GetGradient(float t, Color colorA, Color colorB)
+        {
+            var red = colorA.R + t * (colorB.R - colorA.R);
+            var green = colorA.G + t * (colorB.G - colorA.G);
+            var blue = colorA.B + t * (colorB.B - colorA.B);
+            var alpha = colorA.A + t * (colorB.A - colorA.A);
             return new Color((byte)red, (byte)green, (byte)blue, (byte)alpha);
+        }
+
+        // All Colors are evenly spaced
+        private Color GetGradient(float t, params Color[] gradient)
+        {
+            if (t == 0)
+                return gradient[0];
+            else if (t == 1)
+                return gradient[^1];
+            
+            var numColors = gradient.Length - 1;
+            var space = 1f / numColors;
+            var closest = (int)MathF.Floor(t / space);
+            return GetGradient((t - (closest * space)) / space, gradient[closest], gradient[closest + 1]);
         }
 
         // EaseOutElastic
