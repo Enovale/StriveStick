@@ -51,12 +51,17 @@ namespace StriveStick
             if (_timeSinceLastInput < 1)
                 _timeSinceLastInput += delta;
 
+            // Get stick position
+            // This assumes we are using a keyboard and does not currently support any analog movement
+            // But I think it would be fairly easy to add it in an existing system
             var x = (Keyboard.IsKeyDown(_keyMap[GAME_ACTION.RIGHT]) ? 1 : 0) +
                     (Keyboard.IsKeyDown(_keyMap[GAME_ACTION.LEFT]) ? -1 : 0);
             var y = (Keyboard.IsKeyDown(_keyMap[GAME_ACTION.DOWN]) ? 1 : 0) +
                     (Keyboard.IsKeyDown(_keyMap[GAME_ACTION.UP]) ? -1 : 0);
             var currentPos = new StickPosition(x, y);
 
+            // If we are holding a different position than before, push that old one on
+            // to the stack and add the current position to the buffer and reset the timer.
             if (currentPos != _inputPosition)
             {
                 _positions.Push(new(_inputPosition, _timeSinceLastInput));
@@ -74,11 +79,19 @@ namespace StriveStick
 
         private void DrawInputDisplay(RenderContext context, Vector2 pos, Size size)
         {
+            // Offset the whole board a bit so it fits within the bounds of the size set
+            // This is honestly redundant I don't think it really matters but yknow
             var offset = new Vector2(2, 2);
             var realSize = size - (new Size((int)offset.X, (int)offset.Y) * 2);
             var realPos = pos + offset;
             var quadrantSize = size.Width / 2f;
             var ratioOffset = quadrantSize * (1 - _roundRatio);
+            
+            // Calculate a map of all the possible stick positions and where they are in screenspace
+            // This calculation is pretty horrible and could easily be cached, especially in a ECS
+            // Note that this is used to draw a polygon so the position order is important.
+            // It goes from top left, wrapping around in a circle clockwise, and then we append the center point.
+            // The center is chopped off before drawing the polygon. I hate this process but it was 3 AM alright.
             var vertexMap = new Dictionary<Vector2, Vector2>()
             {
                 { new(-1, -1), realPos + new Vector2(ratioOffset) },
@@ -95,7 +108,11 @@ namespace StriveStick
 
             if (_positions.Count > 0)
             {
+                // Draw our history line first
                 DrawHistoryLine(context, vertexMap, 5);
+                
+                // Draw a faded stick that tweens between the old stick position and the new one,
+                // instantly snapping to the current if it is interrupted.
                 var oldPos = vertexMap[_positions.Peek().position];
                 var dir = vertexMap[_inputPosition] - oldPos;
                 var tweenPoint = (oldPos + (Ease(_timeSinceLastInput) * dir));
@@ -108,6 +125,7 @@ namespace StriveStick
         private void DrawBoard(RenderContext context, List<Vector2> vertices, float radius)
         {
             RenderSettings.LineThickness = 3;
+            // We dont want the center point for drawing the poly
             var polyVerts = vertices.Take(8).ToList();
             context.Polygon(ShapeMode.Fill, polyVerts, _boardBgColor);
             context.Polygon(ShapeMode.Stroke, polyVerts, _boardAccentColor);
@@ -123,6 +141,14 @@ namespace StriveStick
             context.Circle(ShapeMode.Fill, pos, radius, _stickColor.Alpha(opacity));
         }
 
+        // Definitely the most complicated code here.
+        // Basically we traverse through the history of inputs forward-to-back in time,
+        // draw a line between each input and the next, along with a circle at each point.
+        // Then once the specified amount of history time has elapsed we shrink the line quick and stop.
+        // NOTE: The shrinking should only shrink the last segment but it currently just guesses based on a small
+        // time offset because all other solutions i've found cause other issues and I was really tired.
+        // OTHER NOTE: The draw calls are batched and drawn in reverse so that the shrunk part of the line
+        // is always covered up by what comes after because of the way we're iterating the inputs.
         private void DrawHistoryLine(RenderContext context, Dictionary<Vector2, Vector2> vertexMap, float radius)
         {
             var totalTime = 0f;
@@ -165,6 +191,7 @@ namespace StriveStick
             context.DrawBatch(DrawOrder.FrontToBack);
         }
 
+        // Draw a simple segment gradient to the screen to make sure my gradient code is right
         private void TestGradient(RenderContext context)
         {
             var offset = new Vector2(100, 250);
@@ -176,6 +203,7 @@ namespace StriveStick
             }
         }
 
+        // Simply interpolates between two colors based on t.
         private Color GetGradient(float t, Color colorA, Color colorB)
         {
             var red = colorA.R + t * (colorB.R - colorA.R);
@@ -185,6 +213,7 @@ namespace StriveStick
             return new Color((byte)red, (byte)green, (byte)blue, (byte)alpha);
         }
 
+        // Interpolates between an arbitrary set of colors based on t
         // All Colors are evenly spaced
         private Color GetGradient(float t, params Color[] gradient)
         {
@@ -196,10 +225,11 @@ namespace StriveStick
             var numColors = gradient.Length - 1;
             var space = 1f / numColors;
             var closest = (int)MathF.Floor(t / space);
-            return GetGradient((t - (closest * space)) / space, gradient[closest], gradient[closest + 1]);
+            var scaledTime = (t - (closest * space)) / space;
+            return GetGradient(scaledTime, gradient[closest], gradient[closest + 1]);
         }
 
-        // EaseOutElastic
+        // EaseOutQuint
         private float Ease(float number)
         {
             return 1 - MathF.Pow(1 - number, 30);
