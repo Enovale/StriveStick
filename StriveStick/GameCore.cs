@@ -4,6 +4,7 @@ using Chroma;
 using Chroma.Diagnostics;
 using Chroma.Graphics;
 using Chroma.Graphics.Batching;
+using Chroma.Graphics.TextRendering.TrueType;
 using Chroma.Input;
 using Color = Chroma.Graphics.Color;
 
@@ -17,11 +18,52 @@ namespace StriveStick
             { GAME_ACTION.RIGHT, ScanCode.D },
             { GAME_ACTION.DOWN, ScanCode.S },
             { GAME_ACTION.LEFT, ScanCode.A },
+            { GAME_ACTION.PUNCH, ScanCode.U },
+            { GAME_ACTION.KICK, ScanCode.J },
+            { GAME_ACTION.SLASH, ScanCode.I },
+            { GAME_ACTION.HEAVYSLASH, ScanCode.K },
+            { GAME_ACTION.DUST, ScanCode.O },
+            { GAME_ACTION.ROMANCANCEL, ScanCode.L },
+            { GAME_ACTION.DASH, ScanCode.Space },
+            { GAME_ACTION.TAUNT, ScanCode.B },
+            { GAME_ACTION.FAULTLESSDEFENSE, ScanCode.M },
+        };
+
+        private static readonly Dictionary<GAME_ACTION, string> _buttonMap = new()
+        {
+            { GAME_ACTION.PUNCH, "P" },
+            { GAME_ACTION.KICK, "K" },
+            { GAME_ACTION.SLASH, "S" },
+            { GAME_ACTION.HEAVYSLASH, "HS" },
+            { GAME_ACTION.DUST, "D" },
+            { GAME_ACTION.ROMANCANCEL, "RC" },
+            { GAME_ACTION.DASH, "DA" },
+            { GAME_ACTION.TAUNT, "T" },
+            { GAME_ACTION.FAULTLESSDEFENSE, "FD" },
+            /*
+            { GAME_ACTION.DASH, "\ud83c\udfc3" },
+            { GAME_ACTION.TAUNT, "\ud83d\ude1b" },
+            { GAME_ACTION.FAULTLESSDEFENSE, "\ud83d\udee1\ufe0f" },
+            */
+        };
+
+        private static readonly Dictionary<GAME_ACTION, Color> _colorMap = new()
+        {
+            { GAME_ACTION.PUNCH, Color.Pink },
+            { GAME_ACTION.KICK, Color.Blue },
+            { GAME_ACTION.SLASH, Color.LimeGreen },
+            { GAME_ACTION.HEAVYSLASH, Color.Red },
+            { GAME_ACTION.DUST, Color.Orange },
+            { GAME_ACTION.ROMANCANCEL, Color.DarkMagenta },
+            { GAME_ACTION.DASH, Color.White },
+            { GAME_ACTION.TAUNT, Color.Yellow },
+            { GAME_ACTION.FAULTLESSDEFENSE, Color.LimeGreen },
         };
 
         private static readonly float _roundRatio = 0.85f;
 
         private static readonly Color _stickColor = new(255, 0, 0);
+        private static readonly Color _buttonColor = new(107, 107, 107);
         private static readonly Color _boardBgColor = new(153, 153, 153);
         private static readonly Color _boardAccentColor = new(242, 242, 242);
 
@@ -34,15 +76,31 @@ namespace StriveStick
 
         private static readonly float _historyLineTime = 0.5f;
 
+        private static readonly float _buttonLifetime = .8f;
+
         private StickPosition _inputPosition = Vector2.Zero;
 
         private Stack<(StickPosition position, float timeSinceLastInput)> _positions = new(50);
 
+        private Queue<PressedButton> _buttonPresses = new();
+
         private float _timeSinceLastInput = 0;
+
+        private List<ScanCode> _pressedKeys = new();
+
+        private TrueTypeFont _font = null!;
 
         public GameCore() : base(new(false, false))
         {
             FixedTimeStepTarget = 60;
+            Window.Size = new(140, 140);
+        }
+
+        protected override void LoadContent()
+        {
+            _font = TrueTypeFont.Default;
+            _font.Height = 24;
+            //_font = Content.Load<TrueTypeFont>("NotoColorEmoji.ttf");
         }
 
         protected override void FixedUpdate(float delta)
@@ -50,6 +108,20 @@ namespace StriveStick
             Window.Title = PerformanceCounter.FPS.ToString();
             if (_timeSinceLastInput < 1)
                 _timeSinceLastInput += delta;
+
+            var amountToRemove = 0;
+            foreach (var buttonPress in _buttonPresses)
+            {
+                buttonPress.RemainingLifetime -= delta;
+
+                if (buttonPress.RemainingLifetime < 0)
+                    amountToRemove++;
+            }
+
+            for (int i = 0; i < amountToRemove; i++)
+            {
+                _buttonPresses.Dequeue();
+            }
 
             // Get stick position
             // This assumes we are using a keyboard and does not currently support any analog movement
@@ -69,12 +141,31 @@ namespace StriveStick
                 _timeSinceLastInput = 0;
                 Console.WriteLine(_inputPosition);
             }
+            
+            foreach (var kvp in _keyMap)
+            {
+                if (_buttonMap.ContainsKey(kvp.Key))
+                {
+                    if (Keyboard.IsKeyDown(kvp.Value))
+                    {
+                        if (!_pressedKeys.Contains(kvp.Value))
+                        {
+                            _pressedKeys.Add(kvp.Value);
+                            _buttonPresses.Enqueue(new(kvp.Key, currentPos, _buttonLifetime));
+                        }
+                    }
+                    else
+                    {
+                        _pressedKeys.Remove(kvp.Value);
+                    }
+                }
+            }
         }
 
         protected override void Draw(RenderContext context)
         {
-            DrawInputDisplay(context, new(100, 100), new(100, 100));
-            TestGradient(context);
+            DrawInputDisplay(context, new(20, 20), new(100, 100));
+            //TestGradient(context);
         }
 
         private void DrawInputDisplay(RenderContext context, Vector2 pos, Size size)
@@ -115,11 +206,30 @@ namespace StriveStick
                 // instantly snapping to the current if it is interrupted.
                 var oldPos = vertexMap[_positions.Peek().position];
                 var dir = vertexMap[_inputPosition] - oldPos;
-                var tweenPoint = (oldPos + (Ease(_timeSinceLastInput) * dir));
+                var tweenPoint = (oldPos + (EaseOut(_timeSinceLastInput) * dir));
                 DrawStick(context, tweenPoint, 10, 0.5f);
             }
 
             DrawStick(context, vertexMap[_inputPosition], 10, 1);
+            
+            // Now we draw the buttons the user has recently pressed.
+            foreach (var buttonPress in _buttonPresses.Reverse())
+            {
+                var t = 1 - (buttonPress.RemainingLifetime / _buttonLifetime);
+                var et = EaseOut(t, 5);
+                var ret = 1 - et;
+                // This is not correct, in game the button fully covers things below for most of it's lifetime
+                // I'm sick of thinking about it.
+                var alphaT = 1 - EaseIn(et, 5);
+                var r = Interpolate(et, 18, 6);
+
+                var buttonPos = vertexMap[buttonPress.StickPosition];
+                context.Circle(ShapeMode.Fill, buttonPos, r, _buttonColor.Alpha(alphaT));
+                var str = _buttonMap[buttonPress.Action];
+                var measure = _font.Measure(str) + new Size((int)ret, (int)ret);
+                var halfMeasure = measure / 2;
+                context.DrawString(str, buttonPos - new Vector2(halfMeasure.Width, halfMeasure.Height), _colorMap[buttonPress.Action].Alpha(alphaT));
+            }
         }
 
         private void DrawBoard(RenderContext context, List<Vector2> vertices, float radius)
@@ -206,11 +316,16 @@ namespace StriveStick
         // Simply interpolates between two colors based on t.
         private Color GetGradient(float t, Color colorA, Color colorB)
         {
-            var red = colorA.R + t * (colorB.R - colorA.R);
-            var green = colorA.G + t * (colorB.G - colorA.G);
-            var blue = colorA.B + t * (colorB.B - colorA.B);
-            var alpha = colorA.A + t * (colorB.A - colorA.A);
+            var red = Interpolate(t, colorA.R, colorB.R);
+            var green = Interpolate(t, colorA.G, colorB.G);
+            var blue = Interpolate(t, colorA.B, colorB.B);
+            var alpha = Interpolate(t, colorA.A, colorB.A);
             return new Color((byte)red, (byte)green, (byte)blue, (byte)alpha);
+        }
+
+        private float Interpolate(float t, float a, float b)
+        {
+            return a + t * (b - a);
         }
 
         // Interpolates between an arbitrary set of colors based on t
@@ -230,9 +345,15 @@ namespace StriveStick
         }
 
         // EaseOutQuint
-        private float Ease(float number)
+        private float EaseOut(float number, int factor = 30)
         {
-            return 1 - MathF.Pow(1 - number, 30);
+            return 1 - MathF.Pow(1 - number, factor);
+        }
+
+        // EaseInQuint
+        private float EaseIn(float number, int factor = 30)
+        {
+            return MathF.Pow(number, factor);
         }
     }
 }
