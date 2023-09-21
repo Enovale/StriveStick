@@ -90,6 +90,12 @@ namespace StriveStick
 
         private TrueTypeFont _font = null!;
 
+        private bool _renderButtons = true;
+
+        private bool _renderHistoryLine = true;
+
+        private bool _renderStick = true;
+
         public GameCore() : base(new(false, false))
         {
             FixedTimeStepTarget = 60;
@@ -101,6 +107,30 @@ namespace StriveStick
             _font = TrueTypeFont.Default;
             _font.Height = 24;
             //_font = Content.Load<TrueTypeFont>("NotoColorEmoji.ttf");
+        }
+
+        protected override void KeyPressed(KeyEventArgs e)
+        {
+            if (e.ScanCode == ScanCode.F1)
+            {
+                FixedTimeStepTarget = 60;
+            }
+            else if (e.ScanCode == ScanCode.F2)
+            {
+                FixedTimeStepTarget = 185;
+            }
+            else if (e.ScanCode == ScanCode.F3)
+            {
+                _renderButtons = !_renderButtons;
+            }
+            else if (e.ScanCode == ScanCode.F4)
+            {
+                _renderHistoryLine = !_renderHistoryLine;
+            }
+            else if (e.ScanCode == ScanCode.F5)
+            {
+                _renderStick = !_renderStick;
+            }
         }
 
         protected override void FixedUpdate(float delta)
@@ -199,36 +229,47 @@ namespace StriveStick
 
             if (_positions.Count > 0)
             {
-                // Draw our history line first
-                DrawHistoryLine(context, vertexMap, 5);
-                
-                // Draw a faded stick that tweens between the old stick position and the new one,
-                // instantly snapping to the current if it is interrupted.
-                var oldPos = vertexMap[_positions.Peek().position];
-                var dir = vertexMap[_inputPosition] - oldPos;
-                var tweenPoint = (oldPos + (EaseOut(_timeSinceLastInput) * dir));
-                DrawStick(context, tweenPoint, 10, 0.5f);
+                if (_renderHistoryLine)
+                {
+                    // Draw our history line first
+                    DrawHistoryLine(context, vertexMap, 5);
+                }
+
+                if (_renderStick)
+                {
+                    // Draw a faded stick that tweens between the old stick position and the new one,
+                    // instantly snapping to the current if it is interrupted.
+                    var oldPos = vertexMap[_positions.Peek().position];
+                    var dir = vertexMap[_inputPosition] - oldPos;
+                    var tweenPoint = (oldPos + (EaseOut(_timeSinceLastInput) * dir));
+                    DrawStick(context, tweenPoint, 10, 0.5f);
+                }
             }
 
-            DrawStick(context, vertexMap[_inputPosition], 10, 1);
-            
-            // Now we draw the buttons the user has recently pressed.
-            foreach (var buttonPress in _buttonPresses.Reverse())
-            {
-                var t = 1 - (buttonPress.RemainingLifetime / _buttonLifetime);
-                var et = EaseOut(t, 5);
-                var ret = 1 - et;
-                // This is not correct, in game the button fully covers things below for most of it's lifetime
-                // I'm sick of thinking about it.
-                var alphaT = 1 - EaseIn(et, 5);
-                var r = Interpolate(et, 18, 6);
+            if (_renderStick)
+                DrawStick(context, vertexMap[_inputPosition], 10, 1);
 
-                var buttonPos = vertexMap[buttonPress.StickPosition];
-                context.Circle(ShapeMode.Fill, buttonPos, r, _buttonColor.Alpha(alphaT));
-                var str = _buttonMap[buttonPress.Action];
-                var measure = _font.Measure(str) + new Size((int)ret, (int)ret);
-                var halfMeasure = measure / 2;
-                context.DrawString(str, buttonPos - new Vector2(halfMeasure.Width, halfMeasure.Height), _colorMap[buttonPress.Action].Alpha(alphaT));
+            if (_renderButtons)
+            {
+                // Now we draw the buttons the user has recently pressed.
+                foreach (var buttonPress in _buttonPresses.Reverse())
+                {
+                    var t = 1 - (buttonPress.RemainingLifetime / _buttonLifetime);
+                    var et = EaseOut(t, 5);
+                    var ret = 1 - et;
+                    // This is not correct, in game the button fully covers things below for most of it's lifetime
+                    // I'm sick of thinking about it.
+                    var alphaT = 1 - EaseIn(et, 5);
+                    var r = Interpolate(et, 18, 6);
+
+                    var buttonPos = vertexMap[buttonPress.StickPosition];
+                    context.Circle(ShapeMode.Fill, buttonPos, r, _buttonColor.Alpha(alphaT));
+                    var str = _buttonMap[buttonPress.Action];
+                    var measure = _font.Measure(str) + new Size((int)ret, (int)ret);
+                    var halfMeasure = measure / 2;
+                    context.DrawString(str, buttonPos - new Vector2(halfMeasure.Width, halfMeasure.Height),
+                        _colorMap[buttonPress.Action].Alpha(alphaT));
+                }
             }
         }
 
