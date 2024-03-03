@@ -1,11 +1,13 @@
 using System.Drawing;
 using System.Numerics;
+using System.Reflection;
 using Chroma;
 using Chroma.Diagnostics;
 using Chroma.Graphics;
 using Chroma.Graphics.Batching;
 using Chroma.Graphics.TextRendering.TrueType;
 using Chroma.Input;
+using Chroma.Input.GameControllers;
 using Color = Chroma.Graphics.Color;
 
 namespace StriveStick
@@ -27,6 +29,27 @@ namespace StriveStick
             { GAME_ACTION.DASH, ScanCode.Space },
             { GAME_ACTION.TAUNT, ScanCode.B },
             { GAME_ACTION.FAULTLESSDEFENSE, ScanCode.M },
+        };
+        
+        private static readonly Dictionary<GAME_ACTION, ControllerButton> _gamePadMap = new()
+        {
+            { GAME_ACTION.UP, ControllerButton.DpadUp },
+            { GAME_ACTION.RIGHT, ControllerButton.DpadRight },
+            { GAME_ACTION.DOWN, ControllerButton.DpadDown },
+            { GAME_ACTION.LEFT, ControllerButton.DpadLeft },
+            { GAME_ACTION.PUNCH, ControllerButton.X },
+            { GAME_ACTION.KICK, ControllerButton.A },
+            { GAME_ACTION.SLASH, ControllerButton.Y },
+            { GAME_ACTION.HEAVYSLASH, ControllerButton.B },
+            { GAME_ACTION.DUST, ControllerButton.RightBumper },
+            { GAME_ACTION.ROMANCANCEL, ControllerButton.RightBottomPaddle },
+            { GAME_ACTION.DASH, ControllerButton.LeftStick },
+            { GAME_ACTION.FAULTLESSDEFENSE, ControllerButton.RightStick },
+        };
+        
+        private static readonly Dictionary<GAME_ACTION, ControllerAxis> _triggerMap = new()
+        {
+            { GAME_ACTION.ROMANCANCEL, ControllerAxis.RightTrigger },
         };
 
         private static readonly Dictionary<GAME_ACTION, string> _buttonMap = new()
@@ -86,7 +109,7 @@ namespace StriveStick
 
         private float _timeSinceLastInput = 0;
 
-        private List<ScanCode> _pressedKeys = new();
+        private List<GAME_ACTION> _pressedActions = new();
 
         private TrueTypeFont _font = null!;
 
@@ -100,6 +123,9 @@ namespace StriveStick
         {
             FixedTimeStepTarget = 60;
             Window.Size = new(140, 140);
+            var sdl2Type = Type.GetType("Chroma.Natives.Bindings.SDL.SDL2, Chroma.Natives, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null");
+            var setHint = sdl2Type?.GetMethod("SDL_SetHint", BindingFlags.Static | BindingFlags.Public);
+            setHint?.Invoke(null, ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1"]);
         }
 
         protected override void LoadContent()
@@ -160,6 +186,21 @@ namespace StriveStick
                     (Keyboard.IsKeyDown(_keyMap[GAME_ACTION.LEFT]) ? -1 : 0);
             var y = (Keyboard.IsKeyDown(_keyMap[GAME_ACTION.DOWN]) ? 1 : 0) +
                     (Keyboard.IsKeyDown(_keyMap[GAME_ACTION.UP]) ? -1 : 0);
+            
+            if (Controller.DeviceCount > 0)
+            {
+                var nX = (Controller.IsButtonDown(0, _gamePadMap[GAME_ACTION.RIGHT]) ? 1 : 0) +
+                        (Controller.IsButtonDown(0, _gamePadMap[GAME_ACTION.LEFT]) ? -1 : 0);
+                var nY = (Controller.IsButtonDown(0, _gamePadMap[GAME_ACTION.DOWN]) ? 1 : 0) +
+                        (Controller.IsButtonDown(0, _gamePadMap[GAME_ACTION.UP]) ? -1 : 0);
+
+                if (nX != 0 || nY != 0)
+                {
+                    x = nX;
+                    y = nY;
+                }
+            }
+            
             var currentPos = new StickPosition(x, y);
 
             // If we are holding a different position than before, push that old one on
@@ -171,24 +212,73 @@ namespace StriveStick
                 _timeSinceLastInput = 0;
                 Console.WriteLine(_inputPosition);
             }
-            
+
+            // This code SUCKS.
+            var cPresses = new List<GAME_ACTION>(_pressedActions);
+            if (Controller.DeviceCount > 0)
+            {
+                foreach (var kvp in _gamePadMap)
+                {
+                    if (_buttonMap.ContainsKey(kvp.Key))
+                    {
+                        if (Controller.IsButtonDown(0, kvp.Value))
+                        {
+                            if (!_pressedActions.Contains(kvp.Key))
+                            {
+                                cPresses.Add(kvp.Key);
+                                _buttonPresses.Enqueue(new(kvp.Key, currentPos, _buttonLifetime));
+                            }
+                        }
+                        else
+                        {
+                            cPresses.Remove(kvp.Key);
+                        }
+                    }
+                }
+                
+                foreach (var kvp in _triggerMap)
+                {
+                    if (_buttonMap.ContainsKey(kvp.Key))
+                    {
+                        if (Controller.GetAxisValueNormalized(0, kvp.Value) >= 0.9f)
+                        {
+                            if (!_pressedActions.Contains(kvp.Key))
+                            {
+                                cPresses.Add(kvp.Key);
+                                _buttonPresses.Enqueue(new(kvp.Key, currentPos, _buttonLifetime));
+                            }
+                        }
+                        else
+                        {
+                            cPresses.Remove(kvp.Key);
+                        }
+                    }
+                }
+            }
+
             foreach (var kvp in _keyMap)
             {
                 if (_buttonMap.ContainsKey(kvp.Key))
                 {
                     if (Keyboard.IsKeyDown(kvp.Value))
                     {
-                        if (!_pressedKeys.Contains(kvp.Value))
+                        if (!_pressedActions.Contains(kvp.Key))
                         {
-                            _pressedKeys.Add(kvp.Value);
+                            _pressedActions.Add(kvp.Key);
                             _buttonPresses.Enqueue(new(kvp.Key, currentPos, _buttonLifetime));
                         }
                     }
-                    else
+                    else if (!cPresses.Contains(kvp.Key))
                     {
-                        _pressedKeys.Remove(kvp.Value);
+                        _pressedActions.Remove(kvp.Key);
                     }
                 }
+            }
+            
+            foreach (var gameAction in cPresses)
+            {
+                if (!_pressedActions.Contains(gameAction))
+                    _pressedActions.Add(gameAction);
             }
         }
 
