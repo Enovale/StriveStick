@@ -8,7 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Chroma" Version="0.60.1" />
+      <PackageReference Include="Chroma" Version="0.65.1" />
     </ItemGroup>
 
     <ItemGroup>

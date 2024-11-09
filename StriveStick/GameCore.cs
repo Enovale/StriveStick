@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Numerics;
 using System.Reflection;
 using Chroma;
+using Chroma.ContentManagement;
 using Chroma.Diagnostics;
 using Chroma.Graphics;
 using Chroma.Graphics.Batching;
@@ -123,12 +124,13 @@ namespace StriveStick
         {
             FixedTimeStepTarget = 60;
             Window.Size = new(140, 140);
+            Window.CanResize = true;
             var sdl2Type = Type.GetType("Chroma.Natives.Bindings.SDL.SDL2, Chroma.Natives, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null");
             var setHint = sdl2Type?.GetMethod("SDL_SetHint", BindingFlags.Static | BindingFlags.Public);
             setHint?.Invoke(null, ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1"]);
         }
 
-        protected override void LoadContent()
+        protected override void Initialize(IContentProvider content)
         {
             _font = TrueTypeFont.Default;
             _font.Height = 24;
@@ -193,11 +195,18 @@ namespace StriveStick
                         (Controller.IsButtonDown(0, _gamePadMap[GAME_ACTION.LEFT]) ? -1 : 0);
                 var nY = (Controller.IsButtonDown(0, _gamePadMap[GAME_ACTION.DOWN]) ? 1 : 0) +
                         (Controller.IsButtonDown(0, _gamePadMap[GAME_ACTION.UP]) ? -1 : 0);
+                var aX = Controller.GetAxisValueNormalized(0, ControllerAxis.LeftStickX);
+                var aY = Controller.GetAxisValueNormalized(0, ControllerAxis.LeftStickY);
 
                 if (nX != 0 || nY != 0)
                 {
                     x = nX;
                     y = nY;
+                }
+                else if ((aX > 0.5f || aX < -0.5f) || (aY > 0.5f || aY < -0.5f))
+                {
+                    x = (int)MathF.Round(aX);
+                    y = (int)MathF.Round(aY);
                 }
             }
             
