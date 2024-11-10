@@ -86,6 +86,7 @@ namespace StriveStick
 
         private static readonly float _roundRatio = 0.85f;
 
+        private static readonly Color _bgColor = new(0, 0, 0);
         private static readonly Color _stickColor = new(255, 0, 0);
         private static readonly Color _buttonColor = new(107, 107, 107);
         private static readonly Color _boardBgColor = new(153, 153, 153);
@@ -293,6 +294,7 @@ namespace StriveStick
 
         protected override void Draw(RenderContext context)
         {
+            context.Clear(_bgColor);
             DrawInputDisplay(context, new(20, 20), new(100, 100));
             //TestGradient(context);
         }
