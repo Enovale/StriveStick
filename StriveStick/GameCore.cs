@@ -165,6 +165,15 @@ namespace StriveStick
             }
         }
 
+        protected override void MouseMoved(MouseMoveEventArgs e)
+        {
+            if (Mouse.IsButtonDown(MouseButton.Left))
+            {
+                Console.WriteLine(e.Delta);
+                Window.Position += e.Delta;
+            }
+        }
+
         protected override void FixedUpdate(float delta)
         {
             Window.Title = PerformanceCounter.FPS.ToString();
