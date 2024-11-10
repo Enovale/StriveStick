@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Numerics;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using Chroma;
 using Chroma.ContentManagement;
 using Chroma.Diagnostics;
@@ -86,7 +87,7 @@ namespace StriveStick
 
         private static readonly float _roundRatio = 0.85f;
 
-        private static readonly Color _bgColor = new(0, 0, 0);
+        private static readonly Color _bgColor = new(0, 255, 0);
         private static readonly Color _stickColor = new(255, 0, 0);
         private static readonly Color _buttonColor = new(107, 107, 107);
         private static readonly Color _boardBgColor = new(153, 153, 153);
@@ -126,6 +127,8 @@ namespace StriveStick
             FixedTimeStepTarget = 60;
             Window.Size = new(140, 140);
             Window.CanResize = true;
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                WindowsParts.MakeWindowTransparent(Window);
             var sdl2Type = Type.GetType("Chroma.Natives.Bindings.SDL.SDL2, Chroma.Natives, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null");
             var setHint = sdl2Type?.GetMethod("SDL_SetHint", BindingFlags.Static | BindingFlags.Public);
             setHint?.Invoke(null, ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1"]);
