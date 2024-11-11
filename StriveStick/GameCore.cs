@@ -167,10 +167,9 @@ namespace StriveStick
 
         protected override void MouseMoved(MouseMoveEventArgs e)
         {
-            if (Mouse.IsButtonDown(MouseButton.Left))
+            if (e.ButtonState.Left)
             {
-                Console.WriteLine(e.Delta);
-                Window.Position += e.Delta;
+                Window.Position += e.Position;
             }
         }
 
